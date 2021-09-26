@@ -14,7 +14,7 @@ describe("RedblockSale", async () => {
     accounts = await web3.eth.getAccounts();
   });
 
-  describe("normal mint", async () => {
+  describe("mint ETH", async () => {
     let MAIN;
 
     beforeEach("setup", async () => {
@@ -26,9 +26,9 @@ describe("RedblockSale", async () => {
       assert.equal(await redblockSale.currentlyMinted(), 0);
       assert.equal(await redblockSale.balanceOf(MAIN), 0);
 
-      let mintPrice = await redblockSale.getMintPrice(5);
+      let mintPrice = await redblockSale.getMintPriceETH(5);
 
-      let res = await redblockSale.mint(5, { value: mintPrice.times(1000) });
+      let res = await redblockSale.mintForETH(5, { value: mintPrice.times(1000) });
 
       assert.equal(await redblockSale.currentlyMinted(), 5);
       assert.equal(await redblockSale.balanceOf(MAIN), 5);
@@ -39,37 +39,40 @@ describe("RedblockSale", async () => {
     });
 
     it("should not allow mintage of more than 5 NFTs for the same address", async () => {
-      let mintPrice = await redblockSale.getMintPrice(5);
+      let mintPrice = await redblockSale.getMintPriceETH(5);
 
-      await redblockSale.mint(5, { value: mintPrice });
-      await truffleAssert.reverts(redblockSale.mint(1, { value: mintPrice }), "RedblockSale: minter is too greedy");
+      await redblockSale.mintForETH(5, { value: mintPrice });
+      await truffleAssert.reverts(
+        redblockSale.mintForETH(1, { value: mintPrice }),
+        "RedblockSale: can't mint that amount"
+      );
     });
 
     it("should revert if value is less than mint amount", async () => {
-      let mintPrice = await redblockSale.getMintPrice(5);
+      let mintPrice = await redblockSale.getMintPriceETH(5);
 
       await truffleAssert.reverts(
-        redblockSale.mint(5, { value: mintPrice.idiv(2) }),
+        redblockSale.mintForETH(5, { value: mintPrice.idiv(2) }),
         "RedblockSale: not enough ether supplied"
       );
     });
 
     it("should mint NTFs twice", async () => {
-      let mintPrice = await redblockSale.getMintPrice(3);
+      let mintPrice = await redblockSale.getMintPriceETH(3);
 
-      await redblockSale.mint(3, { value: mintPrice });
+      await redblockSale.mintForETH(3, { value: mintPrice });
 
       assert.equal(await redblockSale.balanceOf(MAIN), 3);
       assert.equal(await redblockSale.currentlyMinted(), 3);
 
-      await redblockSale.mint(3, { value: mintPrice });
+      await redblockSale.mintForETH(3, { value: mintPrice });
 
       assert.equal(await redblockSale.balanceOf(MAIN), 5);
       assert.equal(await redblockSale.currentlyMinted(), 5);
     });
   });
 
-  describe("pushy mint", async () => {
+  describe("pushy mint ETH", async () => {
     let MAIN;
 
     beforeEach("setup", async () => {
@@ -78,9 +81,9 @@ describe("RedblockSale", async () => {
     });
 
     it("should not mint more than supply", async () => {
-      let mintPrice = await redblockSale.getMintPrice(5);
+      let mintPrice = await redblockSale.getMintPriceETH(5);
 
-      await redblockSale.mint(5, { value: mintPrice });
+      await redblockSale.mintForETH(5, { value: mintPrice });
 
       assert.equal(await redblockSale.balanceOf(MAIN), 4);
       assert.equal(await redblockSale.currentlyMinted(), 4);
@@ -101,13 +104,13 @@ describe("RedblockSale", async () => {
     });
 
     it("should withdraw ETH", async () => {
-      let mintPrice = await redblockSale.getMintPrice(5);
+      let mintPrice = await redblockSale.getMintPriceETH(5);
 
-      await redblockSale.mint(5, { from: SECOND, value: mintPrice });
+      await redblockSale.mintForETH(5, { from: SECOND, value: mintPrice });
 
       let balance = await web3.eth.getBalance(MAIN);
 
-      await redblockSale.withdraw();
+      await redblockSale.withdrawETH();
 
       assert.isTrue(toBN(await web3.eth.getBalance(MAIN)).gt(balance));
     });

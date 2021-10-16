@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumerable {
+contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumerable {
     using Math for uint256;
 
     uint256 public constant MINT_PER_TRANSACTION = 5;
@@ -17,6 +17,9 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
     uint256 public constant MINT_PER_OPTION = 100;
 
     address public constant NCT_ADDRESS = 0x8A9c4dfe8b9D8962B31e4e16F8321C44d48e246E;
+    address public constant DUST_ADDRESS = 0xe2E109f1b4eaA8915655fE8fDEfC112a34ACc5F0;
+    address public constant WHALE_ADDRESS = 0x9355372396e3F6daF13359B7b607a3374cc638e0;
+
     address public constant NFTBOXES_ADDRESS = 0x6d4530149e5B4483d2F7E60449C02570531A0751;
     address public constant ARTBLOCKS_ADDRESS = 0xa7d8d9ef8D8Ce8992Df33D8b8CF4Aebabd5bD270;
 
@@ -27,6 +30,8 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
 
     uint256 public pricePerTokenETH = 5 * 10**16; // 0.05 ether
     uint256 public pricePerTokenNCT = 5000 * 10**18; // 5000 NCT
+    uint256 public pricePerTokenDUST = 550 * 10**18; // 550 DUST
+    uint256 public pricePerTokenWHALE = 11 * 10**4; // 11 WHALE
 
     uint256 public multiplierNFTBoxes = 1;
     uint256 public multiplierArtblocks = 3;
@@ -44,14 +49,16 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
     event WithdrawnERC721(uint256 tokenId, address collateral);
 
     modifier notStopped() {
-        require(!saleStopped, "RedblockSale: sale is stopped");
+        require(!saleStopped, "RedblockComrades: sale is stopped");
         _;
     }
 
-    constructor() ReentrancyGuard() Ownable() ERC721("Redblock", "RB") {}
+    constructor() ReentrancyGuard() Ownable() ERC721("Redblock Comrades", "\xe2\x98\xad") {
+        saleStopped = true;
+    }
 
     function triggerSale(bool option) external onlyOwner {
-        saleStopped = option;
+        saleStopped = !option;
     }
 
     function setBaseTokenURI(string calldata URI) external onlyOwner {
@@ -66,23 +73,23 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
         multiplierNFTBoxes = multiplier;
     }
 
-    function setPricePerTokenNCT(uint256 newPriceNCT) external onlyOwner {
-        pricePerTokenNCT = newPriceNCT;
+    function setPricePerTokenNCT(uint256 newPrice) external onlyOwner {
+        pricePerTokenNCT = newPrice;
     }
 
-    function setPricePerTokenETH(uint256 newPriceETH) external onlyOwner {
-        pricePerTokenETH = newPriceETH;
+    function setPricePerTokenDUST(uint256 newPrice) external onlyOwner {
+        pricePerTokenDUST = newPrice;
     }
 
-    function withdrawArtblocks(uint256 batch) external onlyOwner {
-        _withdrawERC721(ARTBLOCKS_ADDRESS, batch);
+    function setPricePerTokenWHALE(uint256 newPrice) external onlyOwner {
+        pricePerTokenWHALE = newPrice;
     }
 
-    function withdrawNFTBoxes(uint256 batch) external onlyOwner {
-        _withdrawERC721(NFTBOXES_ADDRESS, batch);
+    function setPricePerTokenETH(uint256 newPrice) external onlyOwner {
+        pricePerTokenETH = newPrice;
     }
 
-    function _withdrawERC721(address collateralAddress, uint256 batch) internal {
+    function withdrawERC721(address collateralAddress, uint256 batch) external onlyOwner {
         IERC721Enumerable collateral = IERC721Enumerable(collateralAddress);
         int256 balance = int256(collateral.balanceOf(address(this)));
 
@@ -95,11 +102,7 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
         }
     }
 
-    function withdrawNCT() external onlyOwner {
-        _withdrawERC20(NCT_ADDRESS);
-    }
-
-    function _withdrawERC20(address collateralAddress) internal {
+    function withdrawERC20(address collateralAddress) external onlyOwner {
         IERC20 collateral = IERC20(collateralAddress);
         uint256 toWithdraw = collateral.balanceOf(address(this));
 
@@ -116,47 +119,65 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
         emit WithdrawnETH(toWithdraw);
     }
 
-    function mintForArtblocks(uint256 tokenId) external notStopped nonReentrant {
-        _mintForERC721(tokenId, ARTBLOCKS_ADDRESS, multiplierArtblocks);
+    function mintForArtblocks(uint256[] calldata tokenIds) external notStopped nonReentrant {
+        _mintForERC721(tokenIds, ARTBLOCKS_ADDRESS, multiplierArtblocks);
     }
 
-    function mintForNFTBoxes(uint256 tokenId) external notStopped nonReentrant {
-        _mintForERC721(tokenId, NFTBOXES_ADDRESS, multiplierNFTBoxes);
+    function mintForNFTBoxes(uint256[] calldata tokenIds) external notStopped nonReentrant {
+        _mintForERC721(tokenIds, NFTBOXES_ADDRESS, multiplierNFTBoxes);
     }
 
     function _mintForERC721(
-        uint256 tokenId,
+        uint256[] memory tokenIds,
         address collateralAddress,
         uint256 multiplier
     ) internal {
-        uint256 mintForSender = Math.min(
-            multiplier,
-            MINT_PER_ADDRESS - mintedPerAddress[_msgSender()]
-        );
+        uint256 mintedOverall;
 
-        uint256 mintForOption = Math.min(
-            mintForSender,
-            MINT_PER_OPTION - mintedPerOption[collateralAddress]
-        );
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 mintForSender = Math.min(
+                multiplier,
+                MINT_PER_ADDRESS - mintedPerAddress[_msgSender()]
+            );
 
-        uint256 howManyToMint = Math.min(mintForOption, cappedSupply - currentlyMinted);
+            uint256 mintForOption = Math.min(
+                mintForSender,
+                MINT_PER_OPTION - mintedPerOption[collateralAddress]
+            );
 
-        require(howManyToMint > 0, "RedblockSale: can't mint that amount");
+            uint256 howManyToMint = Math.min(mintForOption, cappedSupply - currentlyMinted);
 
-        IERC721(collateralAddress).safeTransferFrom(_msgSender(), address(this), tokenId);
+            if (howManyToMint == 0) {
+                break;
+            }
 
-        mintedPerAddress[_msgSender()] += multiplier;
-        mintedPerOption[collateralAddress] += multiplier;
+            mintedOverall += howManyToMint;
 
-        for (uint256 i = 0; i < multiplier; i++) {
-            _safeMint(_msgSender(), ++currentlyMinted);
+            IERC721(collateralAddress).safeTransferFrom(_msgSender(), address(this), tokenIds[i]);
 
-            emit MintedViaERC721(currentlyMinted, collateralAddress);
+            mintedPerAddress[_msgSender()] += howManyToMint;
+            mintedPerOption[collateralAddress] += howManyToMint;
+
+            for (uint256 j = 0; j < howManyToMint; j++) {
+                _safeMint(_msgSender(), ++currentlyMinted);
+
+                emit MintedViaERC721(currentlyMinted, collateralAddress);
+            }
         }
+
+        require(mintedOverall > 0, "RedblockComrades: can't mint that amount");
     }
 
     function mintForNCT(uint256 amount) external notStopped nonReentrant {
         _mintForERC20(amount, NCT_ADDRESS, pricePerTokenNCT);
+    }
+
+    function mintForDUST(uint256 amount) external notStopped nonReentrant {
+        _mintForERC20(amount, DUST_ADDRESS, pricePerTokenDUST);
+    }
+
+    function mintForWHALE(uint256 amount) external notStopped nonReentrant {
+        _mintForERC20(amount, WHALE_ADDRESS, pricePerTokenWHALE);
     }
 
     function _mintForERC20(
@@ -164,8 +185,8 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
         address collateralAddress,
         uint256 pricePerToken
     ) internal {
-        require(amount > 0, "RedblockSale: can't mint zero amount");
-        require(amount <= MINT_PER_TRANSACTION, "RedblockSale: minting more than allowed");
+        require(amount > 0, "RedblockComrades: can't mint zero amount");
+        require(amount <= MINT_PER_TRANSACTION, "RedblockComrades: minting more than allowed");
 
         uint256 mintForSender = Math.min(
             amount,
@@ -179,7 +200,7 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
 
         uint256 howManyToMint = Math.min(mintForOption, cappedSupply - currentlyMinted);
 
-        require(howManyToMint > 0, "RedblockSale: can't mint that amount");
+        require(howManyToMint > 0, "RedblockComrades: can't mint that amount");
 
         uint256 mintPrice = pricePerToken * howManyToMint;
 
@@ -196,8 +217,8 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
     }
 
     function mintForETH(uint256 amount) external payable notStopped nonReentrant {
-        require(amount > 0, "RedblockSale: can't mint zero amount");
-        require(amount <= MINT_PER_TRANSACTION, "RedblockSale: minting more than allowed");
+        require(amount > 0, "RedblockComrades: can't mint zero amount");
+        require(amount <= MINT_PER_TRANSACTION, "RedblockComrades: minting more than allowed");
 
         uint256 mintForSender = Math.min(
             amount,
@@ -206,11 +227,11 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
 
         uint256 howManyToMint = Math.min(mintForSender, cappedSupply - currentlyMinted);
 
-        require(howManyToMint > 0, "RedblockSale: can't mint that amount");
+        require(howManyToMint > 0, "RedblockComrades: can't mint that amount");
 
         uint256 mintPrice = pricePerTokenETH * howManyToMint;
 
-        require(msg.value >= mintPrice, "RedblockSale: not enough ether supplied");
+        require(msg.value >= mintPrice, "RedblockComrades: not enough ether supplied");
 
         mintedPerAddress[_msgSender()] += howManyToMint;
 
@@ -225,18 +246,33 @@ contract RedblockSale is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumer
 
     /// @dev should be used to set allowance
     function getMintPriceNCT(uint256 amount) external view returns (uint256) {
-        require(amount > 0, "RedblockSale: can't mint zero amount");
-        require(amount <= MINT_PER_TRANSACTION, "RedblockSale: minting more than allowed");
+        return _getMintPrice(amount, pricePerTokenNCT);
+    }
 
-        return pricePerTokenNCT * amount;
+    /// @dev should be used to set allowance
+    function getMintPriceDUST(uint256 amount) external view returns (uint256) {
+        return _getMintPrice(amount, pricePerTokenDUST);
+    }
+
+    /// @dev should be used to set allowance
+    function getMintPriceWHALE(uint256 amount) external view returns (uint256) {
+        return _getMintPrice(amount, pricePerTokenWHALE);
     }
 
     /// @dev should be used to set value
     function getMintPriceETH(uint256 amount) external view returns (uint256) {
-        require(amount > 0, "RedblockSale: can't mint zero amount");
-        require(amount <= MINT_PER_TRANSACTION, "RedblockSale: minting more than allowed");
+        return _getMintPrice(amount, pricePerTokenETH);
+    }
 
-        return pricePerTokenETH * amount;
+    function _getMintPrice(uint256 amount, uint256 price) internal pure returns (uint256) {
+        require(amount > 0, "RedblockComrades: can't mint zero amount");
+        require(amount <= MINT_PER_TRANSACTION, "RedblockComrades: minting more than allowed");
+
+        return price * amount;
+    }
+
+    function howManyICanMint(address user) external view returns (uint256) {
+        return MINT_PER_ADDRESS - mintedPerAddress[user];
     }
 
     function _baseURI() internal view override returns (string memory) {

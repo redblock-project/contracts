@@ -1,7 +1,7 @@
 const deploy = require("./deployer");
 
 const main = async () => {
-  await deploy("RedblockSale");
+  await deploy("RedblockComrades");
 };
 
 main()

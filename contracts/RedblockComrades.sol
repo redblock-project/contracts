@@ -9,6 +9,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
+import "./RedblockWhitelist.sol";
+
 contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721Enumerable {
     using Math for uint256;
 
@@ -16,12 +18,14 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
     uint256 public constant MINT_PER_ADDRESS = 5;
     uint256 public constant MINT_PER_OPTION = 100;
 
-    address public constant NCT_ADDRESS = 0x8A9c4dfe8b9D8962B31e4e16F8321C44d48e246E;
-    address public constant DUST_ADDRESS = 0xe2E109f1b4eaA8915655fE8fDEfC112a34ACc5F0;
-    address public constant WHALE_ADDRESS = 0x9355372396e3F6daF13359B7b607a3374cc638e0;
+    RedblockWhitelist public whitelist;
 
-    address public constant NFTBOXES_ADDRESS = 0x6d4530149e5B4483d2F7E60449C02570531A0751;
-    address public constant ARTBLOCKS_ADDRESS = 0xa7d8d9ef8D8Ce8992Df33D8b8CF4Aebabd5bD270;
+    address public nctAddress; // 0x8A9c4dfe8b9D8962B31e4e16F8321C44d48e246E;
+    address public dustAddress; // 0xe2E109f1b4eaA8915655fE8fDEfC112a34ACc5F0;
+    address public whaleAddress; // 0x9355372396e3F6daF13359B7b607a3374cc638e0;
+
+    address public nftBoxesAddress; // 0x6d4530149e5B4483d2F7E60449C02570531A0751;
+    address public artblocksAddress; // 0xa7d8d9ef8D8Ce8992Df33D8b8CF4Aebabd5bD270;
 
     string public baseTokenURI;
 
@@ -39,6 +43,7 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
     mapping(address => uint256) public mintedPerAddress;
     mapping(address => uint256) public mintedPerOption;
 
+    uint256 public whitelistEndBlock;
     bool public saleStopped;
 
     event MintedViaETH(uint256 tokenId);
@@ -53,12 +58,40 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         _;
     }
 
-    constructor() ReentrancyGuard() Ownable() ERC721("Redblock Comrades", "\xe2\x98\xad") {
+    modifier whitelisted(address who) {
+        require(
+            whitelistEndBlock != 0 &&
+                (whitelistEndBlock <= block.number || whitelist.isWhitelisted(who)),
+            "RedblockComrades: not whitelisted"
+        );
+        _;
+    }
+
+    constructor(
+        address _whitelistAddress,
+        address _nctAddress,
+        address _dustAddress,
+        address _whaleAddress,
+        address _nftBoxesAddress,
+        address _artblocksAddress
+    ) ReentrancyGuard() Ownable() ERC721("Redblock Comrades", "\xe2\x98\xad") {
+        whitelist = RedblockWhitelist(_whitelistAddress);
+
+        nctAddress = _nctAddress;
+        dustAddress = _dustAddress;
+        whaleAddress = _whaleAddress;
+        nftBoxesAddress = _nftBoxesAddress;
+        artblocksAddress = _artblocksAddress;
+
         saleStopped = true;
     }
 
     function triggerSale(bool option) external onlyOwner {
         saleStopped = !option;
+    }
+
+    function setWhitelistEndBlock(uint256 blockNum) external onlyOwner {
+        whitelistEndBlock = blockNum;
     }
 
     function setBaseTokenURI(string calldata URI) external onlyOwner {
@@ -119,19 +152,19 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         emit WithdrawnETH(toWithdraw);
     }
 
-    function mintForArtblocks(uint256[] calldata tokenIds) external notStopped nonReentrant {
-        _mintForERC721(tokenIds, ARTBLOCKS_ADDRESS, multiplierArtblocks);
+    function mintForArtblocks(uint256[] calldata tokenIds) external {
+        _mintForERC721(tokenIds, artblocksAddress, multiplierArtblocks);
     }
 
-    function mintForNFTBoxes(uint256[] calldata tokenIds) external notStopped nonReentrant {
-        _mintForERC721(tokenIds, NFTBOXES_ADDRESS, multiplierNFTBoxes);
+    function mintForNFTBoxes(uint256[] calldata tokenIds) external {
+        _mintForERC721(tokenIds, nftBoxesAddress, multiplierNFTBoxes);
     }
 
     function _mintForERC721(
         uint256[] memory tokenIds,
         address collateralAddress,
         uint256 multiplier
-    ) internal {
+    ) internal notStopped nonReentrant whitelisted(_msgSender()) {
         uint256 mintedOverall;
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
@@ -168,23 +201,23 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         require(mintedOverall > 0, "RedblockComrades: can't mint that amount");
     }
 
-    function mintForNCT(uint256 amount) external notStopped nonReentrant {
-        _mintForERC20(amount, NCT_ADDRESS, pricePerTokenNCT);
+    function mintForNCT(uint256 amount) external {
+        _mintForERC20(amount, nctAddress, pricePerTokenNCT);
     }
 
-    function mintForDUST(uint256 amount) external notStopped nonReentrant {
-        _mintForERC20(amount, DUST_ADDRESS, pricePerTokenDUST);
+    function mintForDUST(uint256 amount) external {
+        _mintForERC20(amount, dustAddress, pricePerTokenDUST);
     }
 
-    function mintForWHALE(uint256 amount) external notStopped nonReentrant {
-        _mintForERC20(amount, WHALE_ADDRESS, pricePerTokenWHALE);
+    function mintForWHALE(uint256 amount) external {
+        _mintForERC20(amount, whaleAddress, pricePerTokenWHALE);
     }
 
     function _mintForERC20(
         uint256 amount,
         address collateralAddress,
         uint256 pricePerToken
-    ) internal {
+    ) internal notStopped nonReentrant whitelisted(_msgSender()) {
         require(amount > 0, "RedblockComrades: can't mint zero amount");
         require(amount <= MINT_PER_TRANSACTION, "RedblockComrades: minting more than allowed");
 
@@ -216,7 +249,13 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         }
     }
 
-    function mintForETH(uint256 amount) external payable notStopped nonReentrant {
+    function mintForETH(uint256 amount)
+        external
+        payable
+        notStopped
+        nonReentrant
+        whitelisted(_msgSender())
+    {
         require(amount > 0, "RedblockComrades: can't mint zero amount");
         require(amount <= MINT_PER_TRANSACTION, "RedblockComrades: minting more than allowed");
 

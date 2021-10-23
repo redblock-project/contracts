@@ -1,6 +1,7 @@
 require("@nomiclabs/hardhat-web3");
 require("@nomiclabs/hardhat-truffle5");
 require("@nomiclabs/hardhat-etherscan");
+require("hardhat-gas-reporter");
 
 const dotenv = require("dotenv");
 dotenv.config();
@@ -40,5 +41,11 @@ module.exports = {
   },
   mocha: {
     timeout: 1000000,
+  },
+  gasReporter: {
+    currency: "USD",
+    gasPrice: 50,
+    enabled: true,
+    coinmarketcap: `${process.env.COINMARKETCAP_KEY}`,
   },
 };

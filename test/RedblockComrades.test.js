@@ -14,7 +14,7 @@ NFTMock.numberFormat = "BigNumber";
 ERC20Mock.numberFormat = "BigNumber";
 RedblockComrades.numberFormat = "BigNumber";
 
-describe.only("RedblockComrades", async () => {
+describe("RedblockComrades", async () => {
   let OWNER;
   let SECOND;
 

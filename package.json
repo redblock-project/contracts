@@ -7,6 +7,7 @@
     "compile": "npx hardhat compile --force",
     "test": "npx hardhat test",
     "private-network": "npx hardhat node",
+    "private-network-fork": "npx hardhat node --fork https://mainnet.infura.io/v3/$(grep INFURA_KEY .env | cut -d '\"' -f2)",
     "deploy-dev": "npx hardhat run --network localhost deploy/migrations.js",
     "deploy-rinkeby": "npx hardhat run --network rinkeby deploy/migrations.js",
     "deploy-mainnet": "npx hardhat run --network mainnet deploy/migrations.js",

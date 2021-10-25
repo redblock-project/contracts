@@ -15,7 +15,11 @@ contract RedblockWhitelist is Ownable {
     uint256 public whitelistStartBlock;
     uint256 public whitelistBlockDuration;
 
+    uint256 public totalWhitelist;
     mapping(address => bool) internal _whitelist;
+
+    event Whitelisted(address user);
+    event Delisted(address user);
 
     constructor(
         address punks,
@@ -30,6 +34,36 @@ contract RedblockWhitelist is Ownable {
     function setWhitelistInfo(uint256 startBlockNum, uint256 blockDuration) external onlyOwner {
         whitelistStartBlock = startBlockNum;
         whitelistBlockDuration = blockDuration;
+    }
+
+    function forceDelist(address[] calldata users) external onlyOwner {
+        uint256 delisted;
+
+        for (uint256 i = 0; i < users.length; i++) {
+            if (_whitelist[users[i]]) {
+                delete _whitelist[users[i]];
+                delisted++;
+
+                emit Delisted(users[i]);
+            }
+        }
+
+        totalWhitelist -= delisted;
+    }
+
+    function forceWhitelist(address[] calldata users) external onlyOwner {
+        uint256 whitelisted;
+
+        for (uint256 i = 0; i < users.length; i++) {
+            if (!_whitelist[users[i]]) {
+                _whitelist[users[i]] = true;
+                whitelisted++;
+
+                emit Whitelisted(users[i]);
+            }
+        }
+
+        totalWhitelist += whitelisted;
     }
 
     function isWhitelisted(address user) external view returns (bool) {
@@ -51,5 +85,8 @@ contract RedblockWhitelist is Ownable {
         );
 
         _whitelist[msg.sender] = true;
+        totalWhitelist++;
+
+        emit Whitelisted(msg.sender);
     }
 }

@@ -26,10 +26,15 @@ contract USSRToken is IERC721Receiver, Ownable, ERC20 {
     uint256 public cumulativeSum; // with precision
     uint256 public rewardRatio; // with precision
 
-    EnumerableSet.UintSet internal _kolhozNFTs;
+    uint256 public totalKolhozNFTs;
     mapping(address => EnumerableSet.UintSet) internal _kolhozUserNFTs;
 
-    mapping(uint256 => uint256) public kolhozInfos; // NFT id => cumulative sum
+    struct KolhozInfo {
+        uint256 cumulativeReward;
+        uint256 cumulativeSum;
+    }
+
+    mapping(address => KolhozInfo) public kolhozInfos; // user => kolhoz info
 
     constructor(address redblockComradesAddress) Ownable() ERC20("Redblock Token", "U$$R") {
         redblockComrades = IERC721Enumerable(redblockComradesAddress);
@@ -42,17 +47,18 @@ contract USSRToken is IERC721Receiver, Ownable, ERC20 {
     }
 
     function setRewardPerBlock(uint256 reward) external onlyOwner {
-        _updateCumulativeSum();
+        _updateCumulativeSum(address(0));
 
         rewardPerBlock = reward;
 
-        rewardRatio = (reward * PRECISION) / _kolhozNFTs.length();
+        _updateRewardRatio();
     }
 
     function sendToKolhoz(uint256[] calldata tokenIds) external {
-        _updateCumulativeSum();
+        _updateCumulativeSum(_msgSender());
 
         IERC721Enumerable _redblockComrades = redblockComrades;
+        EnumerableSet.UintSet storage userNFTs = _kolhozUserNFTs[_msgSender()];
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
@@ -64,43 +70,31 @@ contract USSRToken is IERC721Receiver, Ownable, ERC20 {
 
             _redblockComrades.safeTransferFrom(_msgSender(), address(this), tokenId);
 
-            _kolhozUserNFTs[_msgSender()].add(tokenId);
-            _kolhozNFTs.add(tokenId);
-
-            kolhozInfos[tokenId] = cumulativeSum;
+            userNFTs.add(tokenId);
         }
+
+        totalKolhozNFTs += tokenIds.length;
 
         _updateRewardRatio();
     }
 
-    function harvest() external {
-        _updateCumulativeSum();
+    function harvest() public {
+        _updateCumulativeSum(_msgSender());
 
-        EnumerableSet.UintSet storage userNFTs = _kolhozUserNFTs[_msgSender()];
-
-        uint256 length = userNFTs.length();
-        uint256 tokensToHarvest;
-
-        for (uint256 i = 0; i < length; i++) {
-            uint256 tokenId = userNFTs.at(i);
-
-            tokensToHarvest += (cumulativeSum - kolhozInfos[tokenId]) / PRECISION;
-
-            kolhozInfos[tokenId] = cumulativeSum;
-        }
+        uint256 tokensToHarvest = kolhozInfos[_msgSender()].cumulativeReward;
 
         require(tokensToHarvest > 0, "USSRToken: nothing to harvest");
+
+        delete kolhozInfos[_msgSender()].cumulativeReward;
 
         _mint(_msgSender(), tokensToHarvest);
     }
 
-    function returnFromKolhoz(uint256[] calldata tokenIds) external {
-        _updateCumulativeSum();
+    function returnFromKolhoz(uint256[] memory tokenIds) public {
+        _updateCumulativeSum(_msgSender());
 
         IERC721Enumerable _redblockComrades = redblockComrades;
         EnumerableSet.UintSet storage userNFTs = _kolhozUserNFTs[_msgSender()];
-
-        uint256 tokensToHarvest;
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
@@ -109,18 +103,17 @@ contract USSRToken is IERC721Receiver, Ownable, ERC20 {
 
             _redblockComrades.safeTransferFrom(address(this), _msgSender(), tokenId);
 
-            tokensToHarvest += (cumulativeSum - kolhozInfos[tokenId]) / PRECISION;
-
-            delete kolhozInfos[tokenId];
             userNFTs.remove(tokenId);
-            _kolhozNFTs.remove(tokenId);
         }
 
-        require(tokensToHarvest > 0, "USSRToken: nothing to harvest");
-
-        _mint(_msgSender(), tokensToHarvest);
+        totalKolhozNFTs -= tokenIds.length;
 
         _updateRewardRatio();
+    }
+
+    function harvestAndReturnAll() external {
+        harvest();
+        returnFromKolhoz(_kolhozUserNFTs[_msgSender()].values());
     }
 
     function getKolhozTokensCount(address user) external view returns (uint256) {
@@ -134,20 +127,30 @@ contract USSRToken is IERC721Receiver, Ownable, ERC20 {
     function getYield(address user) external view returns (uint256) {
         (uint256 newCumulativeSum, ) = _getNewCumulativeSum();
 
-        EnumerableSet.UintSet storage userNFTs = _kolhozUserNFTs[user];
-
-        uint256 length = userNFTs.length();
-        uint256 tokensToHarvest;
-
-        for (uint256 i = 0; i < length; i++) {
-            tokensToHarvest += (newCumulativeSum - kolhozInfos[userNFTs.at(i)]) / PRECISION;
-        }
-
-        return tokensToHarvest;
+        return
+            _getNewTokensToHarvest(newCumulativeSum, user) +
+            kolhozInfos[_msgSender()].cumulativeReward;
     }
 
-    function _updateCumulativeSum() internal {
+    function _updateCumulativeSum(address user) internal {
         (cumulativeSum, lastUpdateBlock) = _getNewCumulativeSum();
+
+        if (user != address(0)) {
+            uint256 tokensToHarvest = _getNewTokensToHarvest(cumulativeSum, user);
+
+            kolhozInfos[user].cumulativeReward += tokensToHarvest;
+            kolhozInfos[user].cumulativeSum = cumulativeSum;
+        }
+    }
+
+    function _getNewTokensToHarvest(uint256 newCumulativeSum, address user)
+        internal
+        view
+        returns (uint256)
+    {
+        return
+            ((newCumulativeSum - kolhozInfos[user].cumulativeSum) *
+                _kolhozUserNFTs[user].length()) / PRECISION;
     }
 
     function _getNewCumulativeSum()
@@ -169,7 +172,13 @@ contract USSRToken is IERC721Receiver, Ownable, ERC20 {
     }
 
     function _updateRewardRatio() internal {
-        rewardRatio = (rewardPerBlock * PRECISION) / _kolhozNFTs.length();
+        uint256 total = totalKolhozNFTs;
+
+        if (total > 0) {
+            rewardRatio = (rewardPerBlock * PRECISION) / total;
+        } else {
+            rewardRatio = 0;
+        }
     }
 
     function onERC721Received(

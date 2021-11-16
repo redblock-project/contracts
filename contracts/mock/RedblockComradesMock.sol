@@ -5,23 +5,11 @@ import "../RedblockComrades.sol";
 
 contract RedblockComradesMock is RedblockComrades {
     constructor(
-        address _whitelist,
-        address _nctAddress,
-        address _dustAddress,
-        address _whaleAddress,
-        address _nftBoxesAddress,
-        address _artblocksAddress,
+        address[] memory _whitelistCollections,
+        address[] memory _tokenAddresses,
+        address[] memory _nftAddresses,
         uint256 _cappedSupply
-    )
-        RedblockComrades(
-            _whitelist,
-            _nctAddress,
-            _dustAddress,
-            _whaleAddress,
-            _nftBoxesAddress,
-            _artblocksAddress
-        )
-    {
+    ) RedblockComrades(_whitelistCollections, _tokenAddresses, _nftAddresses) {
         cappedSupply = _cappedSupply;
     }
 }

@@ -20,28 +20,26 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
     uint256 public constant MINT_PER_ADDRESS = 5;
     uint256 public constant MINT_PER_OPTION = 100;
 
-    uint256 public constant OWNER_AMOUNT = 40;
-
     bytes32 public whitelistRoot;
 
-    address[] public whitelistCollections; // 0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB, 0x7Bd29408f11D2bFC23c34f18275bBf23bB716Bc7, 0xa3aee8bce55beea1951ef834b99f3ac60d1abeeb
+    address[] public whitelistCollections;
 
-    address public nctAddress; // 0x8A9c4dfe8b9D8962B31e4e16F8321C44d48e246E;
-    address public dustAddress; // 0xe2E109f1b4eaA8915655fE8fDEfC112a34ACc5F0;
-    address public whaleAddress; // 0x9355372396e3F6daF13359B7b607a3374cc638e0;
+    address public nctAddress;
+    address public dustAddress;
+    address public whaleAddress;
 
-    address public nftBoxesAddress; // 0x6d4530149e5B4483d2F7E60449C02570531A0751;
-    address public artblocksAddress; // 0xa7d8d9ef8D8Ce8992Df33D8b8CF4Aebabd5bD270;
+    address public nftBoxesAddress;
+    address public artblocksAddress;
 
     string public baseTokenURI;
 
     uint256 public cappedSupply = 9917;
     uint256 public currentlyMinted;
 
-    uint256 public pricePerTokenETH = 711 * 10**14; // 0.05 ether
-    uint256 public pricePerTokenNCT = 3000 * 10**18; // 5000 NCT
-    uint256 public pricePerTokenDUST = 750 * 10**18; // 550 DUST
-    uint256 public pricePerTokenWHALE = 18 * 10**4; // 11 WHALE
+    uint256 public pricePerTokenETH = 5 * 10**16;
+    uint256 public pricePerTokenNCT = 7100 * 10**18;
+    uint256 public pricePerTokenDUST = 650 * 10**18;
+    uint256 public pricePerTokenWHALE = 12 * 10**4;
 
     uint256 public multiplierNFTBoxes = 1;
     uint256 public multiplierArtblocks = 3;
@@ -54,8 +52,6 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
 
     event Minted(uint256 tokenId);
     event WithdrawnETH(uint256 amount);
-    event WithdrawnERC20(uint256 amount, address collateral);
-    event WithdrawnERC721(uint256 tokenId, address collateral);
 
     modifier notStopped() {
         require(!saleStopped, "RedblockComrades: sale is stopped");
@@ -98,10 +94,10 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         saleStopped = true;
     }
 
-    function mintOwner() external onlyOwner {
+    function mintOwner(uint256 amount) external onlyOwner {
         require(currentlyMinted == 0, "RedblockComrades: owner can't mint");
 
-        _mintComrades(OWNER_AMOUNT);
+        _mintComrades(amount);
     }
 
     function triggerSale(bool option) external onlyOwner {
@@ -280,14 +276,14 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         return Math.min(mintForSender, cappedSupply - currentlyMinted);
     }
 
-    function _getMaxMintPerOptionForUser(uint256 amount, address collateralAddress)
-        internal
-        view
-        returns (uint256)
-    {
+    function _getMaxMintPerOptionForUser(
+        uint256 amount,
+        address user,
+        address collateralAddress
+    ) internal view returns (uint256) {
         return
             Math.min(
-                _getMaxMintAvailable(amount, _msgSender()),
+                _getMaxMintAvailable(amount, user),
                 MINT_PER_OPTION - mintedPerOption[collateralAddress]
             );
     }
@@ -300,6 +296,7 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
     ) internal notStopped nonReentrant {
         uint256 howManyToMint = _getMaxMintPerOptionForUser(
             (tokenIds.length * multiplier).min(whitelistCap - mintedPerAddress[_msgSender()]),
+            _msgSender(),
             collateralAddress
         );
         uint256 tokensAmount = (howManyToMint + multiplier - 1) / multiplier;
@@ -321,7 +318,11 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         address collateralAddress,
         uint256 pricePerToken
     ) internal notStopped nonReentrant {
-        uint256 howManyToMint = _getMaxMintPerOptionForUser(amount, collateralAddress);
+        uint256 howManyToMint = _getMaxMintPerOptionForUser(
+            amount,
+            _msgSender(),
+            collateralAddress
+        );
 
         require(howManyToMint > 0, "RedblockComrades: can't mint that amount");
 
@@ -405,8 +406,64 @@ contract RedblockComrades is IERC721Receiver, ReentrancyGuard, Ownable, ERC721En
         return endBlock != 0 && endBlock <= block.number;
     }
 
-    function howManyICanMint(address user) external view returns (uint256) {
-        return _getMaxMintAvailable(MINT_PER_ADDRESS, user);
+    function howManyICanMint(address user) external view returns (uint256[] memory amounts) {
+        amounts = new uint256[](6);
+
+        amounts[0] = _getMaxMintAvailable(MINT_PER_ADDRESS, user);
+
+        address[5] memory options = [
+            nctAddress,
+            dustAddress,
+            whaleAddress,
+            nftBoxesAddress,
+            artblocksAddress
+        ];
+
+        for (uint256 i = 0; i < options.length; i++) {
+            amounts[i + 1] = _getMaxMintPerOptionForUser(MINT_PER_ADDRESS, user, options[i]);
+        }
+    }
+
+    function howManyICanMintWhitelist(address user, uint256 whitelistAllocation)
+        external
+        view
+        returns (uint256[] memory amounts)
+    {
+        amounts = new uint256[](6);
+
+        uint256 whitelistAvailable = whitelistAllocation - mintedPerAddress[user];
+
+        amounts[0] = _getMaxMintAvailable(whitelistAvailable, user);
+
+        address[5] memory options = [
+            nctAddress,
+            dustAddress,
+            whaleAddress,
+            nftBoxesAddress,
+            artblocksAddress
+        ];
+
+        for (uint256 i = 0; i < options.length; i++) {
+            amounts[i + 1] = _getMaxMintPerOptionForUser(whitelistAvailable, user, options[i]);
+        }
+    }
+
+    function availableForMint() external view returns (uint256[] memory amounts) {
+        amounts = new uint256[](6);
+
+        amounts[0] = cappedSupply - currentlyMinted;
+
+        address[5] memory options = [
+            nctAddress,
+            dustAddress,
+            whaleAddress,
+            nftBoxesAddress,
+            artblocksAddress
+        ];
+
+        for (uint256 i = 0; i < options.length; i++) {
+            amounts[i + 1] = MINT_PER_OPTION - mintedPerOption[options[i]];
+        }
     }
 
     function _baseURI() internal view override returns (string memory) {

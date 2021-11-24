@@ -178,6 +178,21 @@ describe("RedblockComrades", () => {
 
       await redblockComrades.mintForETHWhitelist(1, whitelist[SECOND], leaf, proof, { value: mintPrice, from: SECOND });
     });
+
+    it("should successfully mint whitelist 3 tokens", async () => {
+      await punks.mint(OWNER, 1);
+
+      await redblockComrades.setWhitelistEndBlock(toBN(await web3.eth.getBlockNumber()).plus(100));
+
+      let mintPrice = await redblockComrades.getMintPriceETH(3);
+
+      await redblockComrades.mintForETHWhitelist(3, 5, "0x", [], { value: mintPrice });
+
+      assert.equal(await redblockComrades.currentlyMinted(), 3);
+      assert.equal(await redblockComrades.balanceOf(OWNER), 3);
+
+      assert.equal(await web3.eth.getBalance(redblockComrades.address), mintPrice);
+    });
   });
 
   describe("pushy mint ETH", () => {
@@ -203,7 +218,7 @@ describe("RedblockComrades", () => {
       assert.equal(await redblockComrades.balanceOf(OWNER), 4);
       assert.equal(await redblockComrades.currentlyMinted(), 4);
 
-      assert.equal(await web3.eth.getBalance(redblockComrades.address), mintPrice.minus(web3.utils.toWei("0.0711")));
+      assert.equal(await web3.eth.getBalance(redblockComrades.address), mintPrice.minus(web3.utils.toWei("0.05")));
     });
   });
 
@@ -408,7 +423,9 @@ describe("RedblockComrades", () => {
     });
 
     it("should mint owner NFTs", async () => {
-      await redblockComrades.mintOwner();
+      await redblockComrades.mintOwner(30);
+
+      assert.equal((await redblockComrades.balanceOf(OWNER)).toFixed(), "30");
     });
 
     it("should withdraw ETH", async () => {

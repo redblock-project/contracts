@@ -14,17 +14,23 @@ module.exports = {
     localhost: {
       url: "http://127.0.0.1:8545",
       initialDate: "1970-01-01T00:00:00Z",
-      gasMultiplier: 1.2,
+      gasMultiplier: 1.1,
+      gas: "auto",
+      gasPrice: 100 * 10 ** 9,
     },
     rinkeby: {
       url: `https://rinkeby.infura.io/v3/${process.env.INFURA_KEY}`,
       accounts: [process.env.PRIVATE_KEY],
-      gasMultiplier: 1.2,
+      gasMultiplier: 1.1,
+      gas: "auto",
+      gasPrice: 2 * 10 ** 9,
     },
     mainnet: {
       url: `https://mainnet.infura.io/v3/${process.env.INFURA_KEY}`,
       accounts: [process.env.PRIVATE_KEY],
-      gasMultiplier: 1.2,
+      gasMultiplier: 1.1,
+      gas: "auto",
+      gasPrice: 110 * 10 ** 9,
     },
   },
   solidity: {

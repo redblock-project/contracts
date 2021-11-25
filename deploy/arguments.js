@@ -1,5 +1,4 @@
 module.exports = [
-  "RedblockComrades",
   [
     "0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB",
     "0x7Bd29408f11D2bFC23c34f18275bBf23bB716Bc7",
